@@ -43,7 +43,7 @@ Usage
 We recommend using `vidyut-chandas` through our `Chandas` API:
 
 ```rust
-use vidyut_chandas::{Chandas, MatchType, Vrtta};
+use vidyut_chandas::{Chandas, MatchType, Vrtta, Padya};
 
 let vrttas: Vec<Vrtta> = vec![
     "vasantatilakA\tvrtta\tGGLGLLLGLLGLGG".try_into().unwrap(),
@@ -53,7 +53,12 @@ let vrttas: Vec<Vrtta> = vec![
 ];
 let chandas = Chandas::new(vrttas);
 
-let result = chandas.classify("mAtaH samastajagatAM maDukEwaBAreH");
-assert_eq!(result.vrtta().as_ref().unwrap().name(), "vasantatilakA");
-assert_eq!(result.match_type(), MatchType::Pada);
+let classify_result = chandas.classify("mAtaH samastajagatAM maDukEwaBAreH");
+let result = &classify_result.matches()[0];
+let name: &str = match result.padya() {
+    Padya::Vrtta(v) => v.name(),
+    Padya::Jati(j) => j.name(),
+};
+assert_eq!(name, "vasantatilakA");
+assert_eq!(result.match_type(), &MatchType::Pada);
 ```

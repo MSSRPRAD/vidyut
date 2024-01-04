@@ -10,5 +10,5 @@ mod vrtta;
 mod wasm;
 
 pub use akshara::{Akshara, Weight};
-pub use chandas::{Chandas, MatchResult};
+pub use chandas::{Chandas, Matches, Padya};
 pub use vrtta::{Jati, MatchType, Vrtta};

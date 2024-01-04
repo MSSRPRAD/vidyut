@@ -1,30 +1,54 @@
 use crate::akshara::{scan_lines, Akshara};
 use crate::vrtta::{MatchType, Vrtta};
+use crate::Jati;
 use std::error::Error;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 /// Describes a result of classifying an input string with `Chandas`.
-pub struct MatchResult {
-    vrtta: Option<Vrtta>,
-    match_type: MatchType,
+#[derive(Debug)]
+pub struct Matches {
+    matches: Vec<Match>,
     aksharas: Vec<Vec<Akshara>>,
 }
 
-impl MatchResult {
+impl Matches {
+    /// Get the Aksharas of this match result
+    pub fn aksharas(&self) -> &Vec<Vec<Akshara>> {
+        &self.aksharas
+    }
+
+    /// Get the matches of this match result
+    pub fn matches(&self) -> &Vec<Match> {
+        &self.matches
+    }
+}
+
+#[derive(Debug)]
+pub struct Match {
+    padya: Padya,
+    match_type: MatchType,
+    partial_match: usize,
+}
+
+/// Padya Struct
+#[derive(Debug)]
+pub enum Padya {
+    /// Vrtta Struct
+    Vrtta(Vrtta),
+    /// Jati Struct
+    Jati(Jati),
+}
+
+impl Match {
     /// The vrtta match for this query.
-    pub fn vrtta(&self) -> &Option<Vrtta> {
-        &self.vrtta
+    pub fn padya(&self) -> &Padya {
+        &self.padya
     }
 
     /// The match type for this query.
-    pub fn match_type(&self) -> MatchType {
-        self.match_type
-    }
-
-    /// The aksharas in this query.
-    pub fn aksharas(&self) -> &Vec<Vec<Akshara>> {
-        &self.aksharas
+    pub fn match_type(&self) -> &MatchType {
+        &self.match_type
     }
 }
 
@@ -34,7 +58,7 @@ impl MatchResult {
 /// ### Usage
 ///
 /// ```
-/// use vidyut_chandas::{Chandas, MatchType, Vrtta};
+/// use vidyut_chandas::{Chandas, MatchType, Vrtta, Padya};
 ///
 /// let vrttas: Vec<Vrtta> = vec![
 ///     "vasantatilakA\tvrtta\tGGLGLLLGLLGLGG".try_into().unwrap(),
@@ -44,10 +68,16 @@ impl MatchResult {
 /// ];
 /// let chandas = Chandas::new(vrttas);
 ///
-/// let result = chandas.classify("mAtaH samastajagatAM maDukEwaBAreH");
-/// assert_eq!(result.vrtta().as_ref().unwrap().name(), "vasantatilakA");
-/// assert_eq!(result.match_type(), MatchType::Pada);
+/// let classify_result = chandas.classify("mAtaH samastajagatAM maDukEwaBAreH");
+/// let result = &classify_result.matches()[0];
+/// let name: &str = match result.padya() {
+///     Padya::Vrtta(v) => v.name(),
+///     Padya::Jati(j) => j.name(),
+/// };
+/// assert_eq!(name, "vasantatilakA");
+/// assert_eq!(result.match_type(), &MatchType::Pada);
 /// ```
+
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct Chandas {
     vrttas: Vec<Vrtta>,
@@ -85,32 +115,47 @@ impl Chandas {
     /// Classifies the input string against an internal list of meters.
     ///
     /// Currently, this function supports only simple samavrtta.
-    pub fn classify(&self, text: impl AsRef<str>) -> MatchResult {
+    pub fn classify(&self, text: impl AsRef<str>) -> Matches {
+        self.classify_all(text.as_ref(), 1)
+    }
+    /// Classifies the input string against an internal list of meters and returns the best 'n' partial matches
+    ///
+    /// Currently, this function supports only simple samavrtta.
+    pub fn classify_all(&self, text: impl AsRef<str>, n: usize) -> Matches {
         let aksharas = scan_lines(text.as_ref().lines());
+        let mut matches: Matches = Matches {
+            matches: vec![],
+            aksharas: aksharas.clone(),
+        };
 
-        let mut best_match = MatchType::None;
-        let mut i_best = None;
-        for (i, vrtta) in self.vrttas.iter().enumerate() {
-            let match_type = vrtta.try_match(&aksharas);
-            if match_type > best_match {
-                i_best = Some(i);
-                best_match = match_type;
-            }
+        for (_i, vrtta) in self.vrttas.iter().enumerate() {
+            let (partial_match, match_type) = vrtta.try_match(&aksharas);
+            matches.matches.push(Match {
+                padya: Padya::Vrtta(vrtta.clone()),
+                match_type: match_type,
+                partial_match: partial_match,
+            });
         }
+        matches.matches.sort_by(|a, b| {
+            let match_type_order = |match_type: MatchType| -> u8 {
+                match match_type {
+                    MatchType::Full => 0,
+                    MatchType::Pada => 1,
+                    MatchType::Prefix => 2,
+                    MatchType::None => 3,
+                }
+            };
 
-        if let Some(i) = i_best {
-            MatchResult {
-                vrtta: Some(self.vrttas[i].clone()),
-                match_type: best_match,
-                aksharas,
-            }
-        } else {
-            MatchResult {
-                vrtta: None,
-                match_type: best_match,
-                aksharas,
-            }
-        }
+            let a_type = match_type_order(a.match_type);
+            let b_type = match_type_order(b.match_type);
+
+            a_type.cmp(&b_type).then_with(|| a.partial_match.cmp(&b.partial_match))
+        });
+        
+        eprintln!("{:?}", matches.matches);
+        matches.matches.truncate(n);
+        matches.matches.shrink_to_fit();
+        matches
     }
 }
 
@@ -119,8 +164,12 @@ mod tests {
     use super::*;
 
     fn assert_has_vrtta(c: &Chandas, text: &str, expected: &str) {
-        let res = c.classify(text);
-        assert_eq!(res.vrtta().as_ref().unwrap().name(), expected);
+        let res = &c.classify(text).matches[0].padya;
+        let name: &str = match res {
+            Padya::Vrtta(v) => v.name(),
+            Padya::Jati(j) => j.name(),
+        };
+        assert_eq!(name, expected);
     }
 
     fn new_chandas() -> Chandas {
@@ -154,7 +203,7 @@ mod tests {
             snigDacCAyAtaruzu vasatiM rAmagiryASramezu .. 1 ..",
             "mandAkrAntA",
         );
-        assert!(c.classify("mo mo go go vidyunmAlA").vrtta().is_none());
+        assert!(c.classify("mo mo go go vidyunmAlA").matches[0].match_type == MatchType::None);
     }
 
     #[test]

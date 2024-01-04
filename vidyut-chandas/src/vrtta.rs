@@ -102,6 +102,53 @@ pub struct Vrtta {
     padas: Vec<Pada>,
 }
 
+fn is_equal(a: Weight, b: PatternWeight) -> bool {
+    match a {
+        Weight::G => {
+            return b == PatternWeight::G;
+        }
+        Weight::L => {
+            return b == PatternWeight::L;
+        }
+    }
+}
+
+fn measure_similarity(aksharas: &[Vec<Akshara>], full_pattern: Vec<Vec<PatternWeight>>) -> usize {
+    let n = aksharas.len();
+    let aksharas: Vec<Akshara> = aksharas
+        .iter()
+        .flat_map(|vec| vec.iter())
+        .cloned()
+        .collect();
+    let pattern: Vec<PatternWeight> = full_pattern.into_iter().flatten().collect();
+    let m = pattern.len();
+
+    if n == 0 {
+        return m;
+    } else if m == 0 {
+        return n;
+    }
+
+    let mut dp: Vec<Vec<usize>> = vec![vec![0; m + 1]; n + 1];
+
+    for i in 0..=n {
+        for j in 0..=m {
+            if i == 0 {
+                dp[i][j] = j;
+            } else if j == 0 {
+                dp[i][j] = i;
+            } else if is_equal(aksharas[i - 1].weight, pattern[j - 1]) {
+                dp[i][j] = dp[i-1][j-1];
+            } else {
+                let m = vec![dp[i][j-1], dp[i-1][j], dp[i-1][j-1]];
+                dp[i][j] = 1 + m.iter().min().unwrap();
+            }
+        }
+    }
+
+    dp[n][m]
+}
+
 impl Vrtta {
     /// Creates a new `Vrtta` with the given name and weight pattern.
     pub fn new(name: impl AsRef<str>, padas: Vec<Pada>) -> Self {
@@ -123,8 +170,9 @@ impl Vrtta {
         &self.padas
     }
 
-    pub(crate) fn try_match(&self, aksharas: &[Vec<Akshara>]) -> MatchType {
+    pub(crate) fn try_match(&self, aksharas: &[Vec<Akshara>]) -> (usize, MatchType) {
         use PatternWeight::*;
+        let match_type: MatchType;
 
         eprintln!("Testing against: {}", self.name);
         for row in aksharas {
@@ -169,7 +217,7 @@ impl Vrtta {
         if contains_aksharas {
             let mut is_on_pada_boundary = false;
             let mut acc = 0;
-            for row in full {
+            for row in &full {
                 acc += row.len();
                 if acc == aksharas_flat.len() {
                     is_on_pada_boundary = true;
@@ -178,15 +226,17 @@ impl Vrtta {
             }
 
             if pattern_flat.len() == aksharas_flat.len() {
-                MatchType::Full
+                match_type = MatchType::Full
             } else if is_on_pada_boundary {
-                MatchType::Pada
+                match_type = MatchType::Pada
             } else {
-                MatchType::Prefix
+                match_type = MatchType::Prefix
             }
         } else {
-            MatchType::None
+            match_type = MatchType::None
         }
+
+        (measure_similarity(aksharas, full), match_type)
     }
 
     #[allow(unused)]
@@ -280,6 +330,13 @@ impl Jati {
             name: name.as_ref().to_string(),
             matras,
         }
+    }
+
+    /// The name of this Jati.
+    ///
+    /// A Jati might be known by many other names. This method returns just one of these names.
+    pub fn name(&self) -> &str {
+        &self.name
     }
 
     #[allow(unused)]
