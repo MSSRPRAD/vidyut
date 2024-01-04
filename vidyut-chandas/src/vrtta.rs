@@ -138,9 +138,9 @@ fn measure_similarity(aksharas: &[Vec<Akshara>], full_pattern: Vec<Vec<PatternWe
             } else if j == 0 {
                 dp[i][j] = i;
             } else if is_equal(aksharas[i - 1].weight, pattern[j - 1]) {
-                dp[i][j] = dp[i-1][j-1];
+                dp[i][j] = dp[i - 1][j - 1];
             } else {
-                let m = vec![dp[i][j-1], dp[i-1][j], dp[i-1][j-1]];
+                let m = vec![dp[i][j - 1], dp[i - 1][j], dp[i - 1][j - 1]];
                 dp[i][j] = 1 + m.iter().min().unwrap();
             }
         }

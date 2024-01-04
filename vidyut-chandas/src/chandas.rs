@@ -149,9 +149,11 @@ impl Chandas {
             let a_type = match_type_order(a.match_type);
             let b_type = match_type_order(b.match_type);
 
-            a_type.cmp(&b_type).then_with(|| a.partial_match.cmp(&b.partial_match))
+            a_type
+                .cmp(&b_type)
+                .then_with(|| a.partial_match.cmp(&b.partial_match))
         });
-        
+
         eprintln!("{:?}", matches.matches);
         matches.matches.truncate(n);
         matches.matches.shrink_to_fit();
